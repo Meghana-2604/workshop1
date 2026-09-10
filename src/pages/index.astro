@@ -40,7 +40,22 @@ const publishers = [...new Map(
             data-testid="game-filters"
             aria-label="Filter games"
           >
-            <div class="grid gap-6 md:grid-cols-[2fr_1fr_auto]">
+            <div class="grid gap-6 md:grid-cols-[2fr_1fr_2fr_auto]">
+              <div>
+                <label for="game-search" class="mb-3 block text-sm font-medium text-slate-200">
+                  Search by title
+                </label>
+                <input
+                  id="game-search"
+                  type="search"
+                  name="search"
+                  placeholder="Search games..."
+                  autocomplete="off"
+                  class="w-full rounded-lg border border-slate-600 bg-slate-900 px-3 py-2 text-slate-100 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                  data-testid="game-search"
+                />
+              </div>
+
               <fieldset>
                 <legend class="mb-3 text-sm font-medium text-slate-200">Categories</legend>
                 <div class="flex flex-wrap gap-3">
@@ -108,19 +123,22 @@ const publishers = [...new Map(
   if (filterForm && resultStatus && noResults) {
     const categoryInputs = [...filterForm.querySelectorAll<HTMLInputElement>('input[name="category"]')];
     const publisherInput = filterForm.querySelector<HTMLSelectElement>('select[name="publisher"]');
+    const searchInput = filterForm.querySelector<HTMLInputElement>('input[name="search"]');
 
     const applyFilters = (updateUrl = true) => {
       const selectedCategories = categoryInputs
         .filter((input) => input.checked)
         .map((input) => input.value);
       const selectedPublisher = publisherInput?.value ?? '';
+      const searchTerm = searchInput?.value.trim().toLocaleLowerCase() ?? '';
       const visibleCards = gameCards.filter((card) => {
         const categoryMatches =
           selectedCategories.length === 0 ||
           selectedCategories.includes(card.dataset.categoryId ?? '');
         const publisherMatches =
           selectedPublisher === '' || selectedPublisher === card.dataset.publisherId;
-        const visible = categoryMatches && publisherMatches;
+        const titleMatches = (card.dataset.gameTitle ?? '').toLocaleLowerCase().includes(searchTerm);
+        const visible = categoryMatches && publisherMatches && titleMatches;
         card.hidden = !visible;
         return visible;
       });
@@ -133,6 +151,9 @@ const publishers = [...new Map(
         selectedCategories.forEach((category) => params.append('category', category));
         if (selectedPublisher) {
           params.set('publisher', selectedPublisher);
+        }
+        if (searchTerm) {
+          params.set('search', searchTerm);
         }
         const query = params.toString();
         window.history.replaceState({}, '', query ? `/?${query}` : '/');
@@ -147,8 +168,16 @@ const publishers = [...new Map(
     if (publisherInput) {
       publisherInput.value = params.get('publisher') ?? '';
     }
+    if (searchInput) {
+      searchInput.value = params.get('search') ?? '';
+    }
 
     filterForm.addEventListener('change', () => applyFilters());
+    searchInput?.addEventListener('input', () => applyFilters());
+    filterForm.addEventListener('submit', (event) => {
+      event.preventDefault();
+      applyFilters();
+    });
     filterForm.addEventListener('reset', () => {
       requestAnimationFrame(() => applyFilters());
     });

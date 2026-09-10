@@ -44,7 +44,7 @@ npm run preview
 
 ## Filter games
 
-The homepage provides category and publisher filters for narrowing the game catalog. Category selections use OR matching, while a selected publisher is combined with the category selection. Filters are reflected in the URL query parameters so filtered views can be shared or revisited with browser navigation.
+The homepage provides title search plus category and publisher filters for narrowing the game catalog. Title search is case-insensitive, category selections use OR matching, and a selected publisher is combined with the other filters. Filters are reflected in the URL query parameters so filtered views can be shared or revisited with browser navigation.
 
 ## Database
 
