@@ -46,6 +46,24 @@ test.describe('Game Listing and Navigation', () => {
     await expect(page.getByTestId('filter-results')).toContainText('game');
   });
 
+  test('should search games by title case-insensitively', async ({ page }) => {
+    await page.goto('/');
+    const searchInput = page.getByTestId('game-search');
+    const visibleCards = page.locator('[data-testid="game-card"]:not([hidden])');
+    const firstTitle = await page.getByTestId('game-title').first().textContent();
+
+    expect(firstTitle).not.toBeNull();
+    await searchInput.fill(firstTitle!.slice(0, 5).toUpperCase());
+
+    await expect(visibleCards).toHaveCount(1);
+    await expect(visibleCards.first()).toContainText(firstTitle!);
+    await expect(page).toHaveURL(/search=/);
+
+    await searchInput.fill('no matching game title');
+    await expect(visibleCards).toHaveCount(0);
+    await expect(page.getByTestId('no-filter-results')).toContainText('No games match');
+  });
+
   test('should navigate to correct game details page when clicking on a game', async ({ page }) => {
     let gameId: string | null;
     let gameTitle: string | null;
