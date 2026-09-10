@@ -64,6 +64,28 @@ test.describe('Game Listing and Navigation', () => {
     await expect(page.getByTestId('no-filter-results')).toContainText('No games match');
   });
 
+  test('should paginate the game list accessibly', async ({ page }) => {
+    await page.goto('/');
+
+    const pagination = page.getByTestId('game-pagination');
+    const nextButton = page.getByTestId('pagination-next');
+    const previousButton = page.getByTestId('pagination-previous');
+    await expect(pagination).toBeVisible();
+    await expect(previousButton).toBeDisabled();
+    await expect(page.getByTestId('pagination-status')).toHaveText('Page 1 of 2');
+
+    const visibleCards = page.locator('[data-testid="game-card"]:not([hidden])');
+    const firstPageTitle = await visibleCards.first().getByTestId('game-title').textContent();
+    await nextButton.click();
+
+    await expect(page).toHaveURL(/page=2/);
+    await expect(previousButton).toBeEnabled();
+    await expect(nextButton).toBeDisabled();
+    await expect(page.getByTestId('pagination-status')).toHaveText('Page 2 of 2');
+    const secondPageTitle = await visibleCards.first().getByTestId('game-title').textContent();
+    expect(secondPageTitle).not.toBe(firstPageTitle);
+  });
+
   test('should navigate to correct game details page when clicking on a game', async ({ page }) => {
     let gameId: string | null;
     let gameTitle: string | null;

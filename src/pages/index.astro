@@ -8,7 +8,9 @@ import { getAllGames } from '../lib/games';
 
 export const prerender = true;
 
+const pageSize = 12;
 const games = await getAllGames(getDatabase());
+const totalPages = Math.ceil(games.length / pageSize);
 const categories = [...new Map(
   games
     .filter((game) => game.category)
@@ -108,6 +110,31 @@ const publishers = [...new Map(
           <p class="hidden py-8 text-center text-slate-300" data-testid="no-filter-results" role="status">
             No games match the selected filters.
           </p>
+          <nav
+            class="mt-8 flex flex-wrap items-center justify-center gap-2"
+            aria-label="Game list pagination"
+            data-testid="game-pagination"
+            data-page-size={pageSize}
+            data-total-pages={totalPages}
+          >
+            <button
+              type="button"
+              class="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="pagination-previous"
+              aria-label="Previous page"
+            >
+              Previous
+            </button>
+            <span class="text-sm text-slate-300" data-testid="pagination-status" aria-live="polite"></span>
+            <button
+              type="button"
+              class="rounded-lg border border-slate-600 px-4 py-2 text-sm font-medium text-slate-200 transition-colors hover:bg-slate-700 focus:ring-2 focus:ring-blue-500 focus:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+              data-testid="pagination-next"
+              aria-label="Next page"
+            >
+              Next
+            </button>
+          </nav>
         </>
       )}
     </div>
@@ -119,43 +146,64 @@ const publishers = [...new Map(
   const gameCards = [...document.querySelectorAll<HTMLElement>('[data-testid="game-card"]')];
   const resultStatus = document.querySelector<HTMLElement>('[data-testid="filter-results"]');
   const noResults = document.querySelector<HTMLElement>('[data-testid="no-filter-results"]');
+  const pagination = document.querySelector<HTMLElement>('[data-testid="game-pagination"]');
 
-  if (filterForm && resultStatus && noResults) {
+  if (filterForm && resultStatus && noResults && pagination) {
     const categoryInputs = [...filterForm.querySelectorAll<HTMLInputElement>('input[name="category"]')];
     const publisherInput = filterForm.querySelector<HTMLSelectElement>('select[name="publisher"]');
     const searchInput = filterForm.querySelector<HTMLInputElement>('input[name="search"]');
+    const previousButton = pagination.querySelector<HTMLButtonElement>('[data-testid="pagination-previous"]');
+    const nextButton = pagination.querySelector<HTMLButtonElement>('[data-testid="pagination-next"]');
+    const paginationStatus = pagination.querySelector<HTMLElement>('[data-testid="pagination-status"]');
+    const pageSize = Number(pagination.dataset.pageSize);
 
-    const applyFilters = (updateUrl = true) => {
+    const applyFilters = (updateUrl = true, resetPage = false) => {
       const selectedCategories = categoryInputs
         .filter((input) => input.checked)
         .map((input) => input.value);
       const selectedPublisher = publisherInput?.value ?? '';
       const searchTerm = searchInput?.value.trim().toLocaleLowerCase() ?? '';
-      const visibleCards = gameCards.filter((card) => {
+      const matchingCards = gameCards.filter((card) => {
         const categoryMatches =
           selectedCategories.length === 0 ||
           selectedCategories.includes(card.dataset.categoryId ?? '');
         const publisherMatches =
           selectedPublisher === '' || selectedPublisher === card.dataset.publisherId;
         const titleMatches = (card.dataset.gameTitle ?? '').toLocaleLowerCase().includes(searchTerm);
-        const visible = categoryMatches && publisherMatches && titleMatches;
-        card.hidden = !visible;
-        return visible;
+        return categoryMatches && publisherMatches && titleMatches;
+      });
+      const totalPages = Math.max(1, Math.ceil(matchingCards.length / pageSize));
+      const params = new URLSearchParams(window.location.search);
+      const requestedPage = resetPage ? 1 : Number(params.get('page') ?? 1);
+      const currentPage = Math.min(Math.max(1, Number.isFinite(requestedPage) ? requestedPage : 1), totalPages);
+      const pageStart = (currentPage - 1) * pageSize;
+      const pageCards = new Set(matchingCards.slice(pageStart, pageStart + pageSize));
+      gameCards.forEach((card) => {
+        card.hidden = !pageCards.has(card);
       });
 
-      resultStatus.textContent = `${visibleCards.length} ${visibleCards.length === 1 ? 'game' : 'games'} shown`;
-      noResults.classList.toggle('hidden', visibleCards.length > 0);
+      resultStatus.textContent = `${matchingCards.length} ${matchingCards.length === 1 ? 'game' : 'games'} shown`;
+      noResults.classList.toggle('hidden', matchingCards.length > 0);
+      if (paginationStatus && previousButton && nextButton) {
+        paginationStatus.textContent = `Page ${currentPage} of ${totalPages}`;
+        previousButton.disabled = currentPage === 1;
+        nextButton.disabled = currentPage === totalPages;
+        pagination.hidden = matchingCards.length === 0;
+      }
 
       if (updateUrl) {
-        const params = new URLSearchParams();
-        selectedCategories.forEach((category) => params.append('category', category));
+        const nextParams = new URLSearchParams();
+        selectedCategories.forEach((category) => nextParams.append('category', category));
         if (selectedPublisher) {
-          params.set('publisher', selectedPublisher);
+          nextParams.set('publisher', selectedPublisher);
         }
         if (searchTerm) {
-          params.set('search', searchTerm);
+          nextParams.set('search', searchTerm);
         }
-        const query = params.toString();
+        if (currentPage > 1) {
+          nextParams.set('page', String(currentPage));
+        }
+        const query = nextParams.toString();
         window.history.replaceState({}, '', query ? `/?${query}` : '/');
       }
     };
@@ -172,14 +220,34 @@ const publishers = [...new Map(
       searchInput.value = params.get('search') ?? '';
     }
 
-    filterForm.addEventListener('change', () => applyFilters());
-    searchInput?.addEventListener('input', () => applyFilters());
+    filterForm.addEventListener('change', () => applyFilters(true, true));
+    searchInput?.addEventListener('input', () => applyFilters(true, true));
     filterForm.addEventListener('submit', (event) => {
       event.preventDefault();
       applyFilters();
     });
     filterForm.addEventListener('reset', () => {
-      requestAnimationFrame(() => applyFilters());
+      requestAnimationFrame(() => applyFilters(true, true));
+    });
+    previousButton?.addEventListener('click', () => {
+      const currentPage = Number(new URLSearchParams(window.location.search).get('page') ?? 1);
+      const previousPage = Math.max(1, currentPage - 1);
+      const params = new URLSearchParams(window.location.search);
+      if (previousPage === 1) {
+        params.delete('page');
+      } else {
+        params.set('page', String(previousPage));
+      }
+      window.history.replaceState({}, '', params.toString() ? `/?${params}` : '/');
+      applyFilters(false);
+    });
+    nextButton?.addEventListener('click', () => {
+      const currentPage = Number(new URLSearchParams(window.location.search).get('page') ?? 1);
+      const nextPage = currentPage + 1;
+      const params = new URLSearchParams(window.location.search);
+      params.set('page', String(nextPage));
+      window.history.replaceState({}, '', `/?${params}`);
+      applyFilters(false);
     });
     applyFilters(false);
   }

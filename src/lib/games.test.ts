@@ -6,6 +6,7 @@ import {
     getAllGames,
     getAllGameIds,
     getGameById,
+    getPaginatedGames,
 } from './games';
 
 async function seedGames(db: Database, count: number): Promise<void> {
@@ -101,6 +102,30 @@ describe('games data-access helpers', () => {
     it('returns no games when filters have no matches', async () => {
         await seedGames(db, 2);
         expect(await getAllGames(db, { categoryIds: [99999] })).toEqual([]);
+    });
+
+    it('returns a page of games with total metadata', async () => {
+        await seedGames(db, 5);
+
+        const result = await getPaginatedGames(db, { page: 2, limit: 2 });
+
+        expect(result.games.map((game) => game.title)).toEqual(['Game 03', 'Game 04']);
+        expect(result.total).toBe(5);
+        expect(result.totalPages).toBe(3);
+        expect(result.page).toBe(2);
+        expect(result.limit).toBe(2);
+    });
+
+    it('applies filters before calculating pagination metadata', async () => {
+        await seedGames(db, 3);
+        const [category] = await db.select({ id: categories.id }).from(categories);
+        const result = await getPaginatedGames(db, { page: 1, limit: 2 }, {
+            categoryIds: [category.id],
+        });
+
+        expect(result.games).toHaveLength(2);
+        expect(result.total).toBe(3);
+        expect(result.totalPages).toBe(2);
     });
 
     it('returns all game ids ordered by title', async () => {
