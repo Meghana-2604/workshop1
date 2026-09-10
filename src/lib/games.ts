@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, type SQL } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, type SQL } from 'drizzle-orm';
 import type { Database } from './db';
 import { games, categories, publishers } from '../../db/schema';
 import type { Game } from '../types/game';
@@ -28,6 +28,19 @@ type GameSelectionRow = {
 export interface GameFilters {
     categoryIds?: number[];
     publisherId?: number;
+}
+
+export interface GamePagination {
+    page: number;
+    limit: number;
+}
+
+export interface PaginatedGames {
+    games: Game[];
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
 }
 
 function mapGame(row: GameSelectionRow): Game {
@@ -85,6 +98,45 @@ export async function getAllGames(
         .where(gameFilterCondition(filters))
         .orderBy(asc(games.title));
     return rows.map(mapGame);
+}
+
+/**
+ * Returns one stable, alphabetically ordered page of games and its collection
+ * metadata while applying the same category and publisher filters as
+ * {@link getAllGames}.
+ *
+ * @param db Injectable database client used to query games.
+ * @param pagination One-based page number and positive page size.
+ * @param filters Optional category and publisher constraints.
+ * @returns The requested page, normalized pagination values, total matching
+ * games, and total page count.
+ */
+export async function getPaginatedGames(
+    db: Database,
+    pagination: GamePagination,
+    filters: GameFilters = {},
+): Promise<PaginatedGames> {
+    const page = Math.max(1, Math.floor(pagination.page));
+    const limit = Math.max(1, Math.floor(pagination.limit));
+    const condition = gameFilterCondition(filters);
+    const [{ total }] = await db
+        .select({ total: count(games.id) })
+        .from(games)
+        .where(condition);
+    const totalPages = Math.ceil(total / limit);
+    const rows = await baseGamesQuery(db)
+        .where(condition)
+        .orderBy(asc(games.title))
+        .limit(limit)
+        .offset((page - 1) * limit);
+
+    return {
+        games: rows.map(mapGame),
+        page,
+        limit,
+        total,
+        totalPages,
+    };
 }
 
 /**
