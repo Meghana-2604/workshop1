@@ -27,6 +27,8 @@ export default [
         "error",
         { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
       ],
+      // Keep exported TypeScript APIs explicit and self-documenting.
+      "@typescript-eslint/explicit-module-boundary-types": "error",
     },
   },
 
